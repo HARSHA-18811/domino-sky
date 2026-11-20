@@ -1,57 +1,110 @@
 'use client';
 
+import { useState } from 'react';
 import { CONNECTIONS, FLIGHTS, AIRPORTS } from '@/lib/data/dataset';
-import type { SimulationResultJSON } from '@/lib/simulation/engine';
+import type { SimulationResultJSON, ConnectionResult } from '@/lib/simulation/engine';
 
 interface PassengerPageProps {
   simulationResult: SimulationResultJSON | null;
 }
 
+interface RebookingAction {
+  connectionId: string;
+  actionType: 'next_flight' | 'partner_airline' | 'hotel_voucher' | 'refund';
+  paxCount: number;
+  assignedOption: string;
+  timestamp: string;
+}
+
 export default function PassengerPage({ simulationResult }: PassengerPageProps) {
+  const [selectedConnection, setSelectedConnection] = useState<ConnectionResult | null>(null);
+  const [rebookingLog, setRebookingLog] = useState<RebookingAction[]>([]);
+  const [notification, setNotification] = useState<string | null>(null);
+
   const totalConnectingPax = CONNECTIONS.reduce((s, c) => s + c.passengers, 0);
 
-  // If simulation exists, read deterministic connection results; otherwise default all safe
-  const connectionDetails = simulationResult?.passengerImpact.connection_details ?? CONNECTIONS.map((c) => {
-    const fromF = FLIGHTS.find((f) => f.flight_id === c.from_flight);
-    const toF = FLIGHTS.find((f) => f.flight_id === c.to_flight);
-    return {
-      connection_id: c.connection_id,
-      airport: c.airport,
-      from_flight: c.from_flight,
-      to_flight: c.to_flight,
-      passengers: c.passengers,
-      status: 'safe' as const,
-      from_actual_arr: fromF?.arr ?? '--:--',
-      to_actual_dep: toF?.dep ?? '--:--',
-      gap_minutes: 60,
-      required_minutes: c.min_connect_minutes,
-      reason: 'Nominal operational buffer',
-    };
-  });
+  // Connection details from simulation or baseline nominal
+  const connectionDetails: ConnectionResult[] =
+    simulationResult?.passengerImpact.connection_details ??
+    CONNECTIONS.map((c) => {
+      const fromF = FLIGHTS.find((f) => f.flight_id === c.from_flight);
+      const toF = FLIGHTS.find((f) => f.flight_id === c.to_flight);
+      return {
+        connection_id: c.connection_id,
+        airport: c.airport,
+        from_flight: c.from_flight,
+        to_flight: c.to_flight,
+        passengers: c.passengers,
+        status: 'safe' as const,
+        from_actual_arr: fromF?.arr ?? '--:--',
+        to_actual_dep: toF?.dep ?? '--:--',
+        gap_minutes: 60,
+        required_minutes: c.min_connect_minutes,
+        reason: 'Nominal operational buffer',
+      };
+    });
 
-  const missedCount = connectionDetails.filter((c) => c.status === 'missed').length;
-  const atRiskCount = connectionDetails.filter((c) => c.status === 'at_risk').length;
-  const safeCount = connectionDetails.filter((c) => c.status === 'safe').length;
+  const missedConnections = connectionDetails.filter((c) => c.status === 'missed');
+  const atRiskConnections = connectionDetails.filter((c) => c.status === 'at_risk');
+  const safeConnections = connectionDetails.filter((c) => c.status === 'safe');
 
-  const strandedPax = connectionDetails
-    .filter((c) => c.status === 'missed')
-    .reduce((s, c) => s + c.passengers, 0);
+  const strandedPax = missedConnections.reduce((s, c) => s + c.passengers, 0);
+  const atRiskPax = atRiskConnections.reduce((s, c) => s + c.passengers, 0);
 
-  const atRiskPax = connectionDetails
-    .filter((c) => c.status === 'at_risk')
-    .reduce((s, c) => s + c.passengers, 0);
+  // Handle rebooking passenger action
+  const handleExecuteRebooking = (conn: ConnectionResult, actionType: RebookingAction['actionType']) => {
+    let assignedOption = '';
+    const toFlightData = FLIGHTS.find((f) => f.flight_id === conn.to_flight);
+    const dest = toFlightData?.destination ?? 'destination';
 
-  // Group missed by airport
-  const airportImpactMap = new Map<string, number>();
-  for (const c of connectionDetails) {
-    if (c.status === 'missed') {
-      airportImpactMap.set(c.airport, (airportImpactMap.get(c.airport) ?? 0) + c.passengers);
+    if (actionType === 'next_flight') {
+      assignedOption = `Auto-rebooked onto next available flight to ${dest} (Flight DS-Next Morning). Boarding passes sent via SMS.`;
+    } else if (actionType === 'partner_airline') {
+      assignedOption = `Endorsed onto partner carrier flight to ${dest} departing within 2 hours. Seamless bag transfer tagged.`;
+    } else if (actionType === 'hotel_voucher') {
+      assignedOption = `Issued Transit Hotel Vouchers + INR 1,500 Meal Coupons at ${conn.airport} Airport Hotel (DGCA Passenger Charter).`;
+    } else {
+      assignedOption = `Initiated 100% full refund + 20% future travel credit voucher to all ${conn.passengers} passengers.`;
     }
-  }
+
+    const logEntry: RebookingAction = {
+      connectionId: conn.connection_id,
+      actionType,
+      paxCount: conn.passengers,
+      assignedOption,
+      timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+    };
+
+    setRebookingLog((prev) => [logEntry, ...prev]);
+    setNotification(`✓ ${conn.passengers} Passengers on ${conn.connection_id} Protected: ${assignedOption}`);
+    setTimeout(() => setNotification(null), 5000);
+    setSelectedConnection(null);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Overview Stats */}
+      {/* Top Notification */}
+      {notification && (
+        <div
+          style={{
+            background: 'rgba(34, 197, 94, 0.15)',
+            border: '1px solid rgba(34, 197, 94, 0.4)',
+            borderRadius: '10px',
+            padding: '12px 18px',
+            color: 'var(--status-green)',
+            fontWeight: '600',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          <span>✓</span>
+          <span>{notification}</span>
+        </div>
+      )}
+
+      {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '18px' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Connecting Pax</div>
@@ -64,59 +117,72 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
             {strandedPax}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {missedCount} missed connections requiring rebooking
+            {missedConnections.length} missed connections requiring rebooking
           </div>
         </div>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '18px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>At-Risk Passengers</div>
-          <div style={{ fontSize: '28px', fontWeight: '800', color: atRiskPax > 0 ? 'var(--status-yellow)' : 'var(--status-green)', marginTop: '4px' }}>
-            {atRiskPax}
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Rebooked &amp; Protected</div>
+          <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--status-green)', marginTop: '4px' }}>
+            {rebookingLog.reduce((s, r) => s + r.paxCount, 0)}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {atRiskCount} tight connections (&lt;30m buffer)
+            {rebookingLog.length} passenger care protocols executed
           </div>
         </div>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '18px' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Intact Connections</div>
           <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--status-green)', marginTop: '4px' }}>
-            {safeCount} / {CONNECTIONS.length}
+            {safeConnections.length} / {CONNECTIONS.length}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {Math.round((safeCount / CONNECTIONS.length) * 100)}% connection integrity preserved
+            {Math.round((safeConnections.length / CONNECTIONS.length) * 100)}% connection integrity preserved
           </div>
         </div>
       </div>
 
-      {/* Airport breakdown if stranded */}
-      {airportImpactMap.size > 0 && (
-        <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '16px 20px' }}>
-          <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--status-red)', textTransform: 'uppercase', marginBottom: '10px' }}>
-            Stranded Passenger Distribution by Transit Hub
+      {/* Rebooking Protocol Audit Feed */}
+      {rebookingLog.length > 0 && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px 20px' }}>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent-cyan)', letterSpacing: '0.08em', marginBottom: '10px' }}>
+            RECENT PASSENGER RECOVERY &amp; REBOOKING ACTIONS LOG
           </div>
-          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-            {Array.from(airportImpactMap.entries()).map(([hub, count]) => {
-              const ap = AIRPORTS.find((a) => a.id === hub);
-              return (
-                <div key={hub} style={{ background: 'var(--bg-card)', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--status-red)' }}>{count} Pax</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>
-                    {hub} - {ap?.city}
-                  </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {rebookingLog.slice(0, 3).map((log, i) => (
+              <div
+                key={i}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '12px',
+                  borderLeft: '3px solid var(--status-green)',
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: '700', color: 'var(--accent-cyan)' }}>{log.connectionId}</span>
+                  <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>({log.paxCount} Passengers)</span>
+                  <div style={{ color: 'var(--text-primary)', marginTop: '2px' }}>{log.assignedOption}</div>
                 </div>
-              );
-            })}
+                <span style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-muted)' }}>{log.timestamp} IST</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Connections Table */}
+      {/* Connections Table with Action Button */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)' }}>
-          <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>
-            Passenger Connection Ledger (All 21 Transfers)
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-            Deterministic rule: A connection fails if `actual_arrival(from_flight) + min_connect_minutes &gt; actual_departure(to_flight)`
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              Passenger Connection Ledger (All 21 Transfers)
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+              Click <b>"Resolve &amp; Rebook"</b> on any stranded connection to trigger automated airline passenger care workflows.
+            </div>
           </div>
         </div>
 
@@ -128,16 +194,19 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
               <th>Inbound Flight</th>
               <th>Outbound Flight</th>
               <th>Passengers</th>
-              <th>Inbound Actual Arr</th>
-              <th>Outbound Actual Dep</th>
+              <th>Inbound Arr</th>
+              <th>Outbound Dep</th>
               <th>Buffer / Gap</th>
               <th>Status</th>
-              <th>Reason &amp; Deterministic Diagnosis</th>
+              <th>Recovery Action</th>
             </tr>
           </thead>
           <tbody>
             {connectionDetails.map((conn) => {
               const ap = AIRPORTS.find((a) => a.id === conn.airport);
+              const isMissed = conn.status === 'missed';
+              const isResolved = rebookingLog.some((r) => r.connectionId === conn.connection_id);
+
               return (
                 <tr key={conn.connection_id}>
                   <td>
@@ -154,7 +223,7 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
                     <span style={{ fontWeight: '700' }}>{conn.to_flight}</span>
                   </td>
                   <td>
-                    <span style={{ fontWeight: '700', color: conn.status === 'missed' ? 'var(--status-red)' : 'var(--text-primary)' }}>
+                    <span style={{ fontWeight: '700', color: isMissed ? 'var(--status-red)' : 'var(--text-primary)' }}>
                       {conn.passengers}
                     </span>
                   </td>
@@ -176,7 +245,9 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
                     </span>
                   </td>
                   <td>
-                    {conn.status === 'missed' ? (
+                    {isResolved ? (
+                      <span className="badge badge-green">✓ PROTECTED</span>
+                    ) : isMissed ? (
                       <span className="badge badge-red">MISSED</span>
                     ) : conn.status === 'at_risk' ? (
                       <span className="badge badge-yellow">AT RISK</span>
@@ -184,8 +255,31 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
                       <span className="badge badge-green">SAFE</span>
                     )}
                   </td>
-                  <td style={{ fontSize: '12px', color: conn.status === 'missed' ? 'var(--status-red)' : 'var(--text-secondary)' }}>
-                    {conn.reason}
+                  <td>
+                    {isMissed && !isResolved ? (
+                      <button
+                        onClick={() => setSelectedConnection(conn)}
+                        style={{
+                          background: 'linear-gradient(135deg, #f97316, #ef4444)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '5px 10px',
+                          color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
+                        }}
+                      >
+                        ⚡ Rebook Passengers
+                      </button>
+                    ) : isResolved ? (
+                      <span style={{ fontSize: '11px', color: 'var(--status-green)', fontWeight: '600' }}>
+                        Rebooking Executed
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Connection Intact</span>
+                    )}
                   </td>
                 </tr>
               );
@@ -193,6 +287,171 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
           </tbody>
         </table>
       </div>
+
+      {/* Rebooking Action Modal */}
+      {selectedConnection && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setSelectedConnection(null)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '14px',
+              padding: '24px',
+              width: '560px',
+              maxWidth: '92vw',
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.8)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--status-red)' }}>
+                    Stranded Passenger Recovery Protocol
+                  </span>
+                  <span className="badge badge-red">{selectedConnection.connection_id}</span>
+                </div>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  {selectedConnection.passengers} passengers missed transfer at {selectedConnection.airport} ({selectedConnection.from_flight} ➔ {selectedConnection.to_flight})
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedConnection(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '20px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Diagnostic Box */}
+            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '12px', marginBottom: '18px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--status-red)', textTransform: 'uppercase' }}>
+                Breach Diagnosis
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px' }}>
+                {selectedConnection.reason}
+              </div>
+            </div>
+
+            {/* 4 Standard Airline Recovery Options */}
+            <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent-cyan)', letterSpacing: '0.08em', marginBottom: '10px' }}>
+              SELECT PASSENGER RECOVERY WORKFLOW:
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Option 1: Auto Rebook next flight */}
+              <button
+                onClick={() => handleExecuteRebooking(selectedConnection, 'next_flight')}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-cyan)')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)')}
+              >
+                <div>
+                  <div style={{ fontWeight: '700', color: '#fff', fontSize: '13px' }}>
+                    1. Auto-Rebook Next Available Service
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Rebook on next scheduled frequency today; dispatch new mobile boarding passes via SMS/WhatsApp.
+                  </div>
+                </div>
+                <span className="badge badge-cyan">RECOMMENDED</span>
+              </button>
+
+              {/* Option 2: Partner Carrier Endorsement */}
+              <button
+                onClick={() => handleExecuteRebooking(selectedConnection, 'partner_airline')}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-blue)')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)')}
+              >
+                <div style={{ fontWeight: '700', color: '#fff', fontSize: '13px' }}>
+                  2. Interline Transfer (Partner Airline)
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  Endorse tickets onto partner carrier operating same route within 2 hours; auto-transfer checked bags.
+                </div>
+              </button>
+
+              {/* Option 3: Transit Hotel & Food */}
+              <button
+                onClick={() => handleExecuteRebooking(selectedConnection, 'hotel_voucher')}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--status-yellow)')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)')}
+              >
+                <div style={{ fontWeight: '700', color: '#fff', fontSize: '13px' }}>
+                  3. Issue Transit Hotel Vouchers + Meals
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  Provide airport hotel room and meal vouchers for overnight layover (DGCA Passenger Charter compliance).
+                </div>
+              </button>
+
+              {/* Option 4: Full Refund + Travel Credits */}
+              <button
+                onClick={() => handleExecuteRebooking(selectedConnection, 'refund')}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--status-orange)')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--border-color)')}
+              >
+                <div style={{ fontWeight: '700', color: '#fff', fontSize: '13px' }}>
+                  4. Instant 100% Refund + 20% Travel Credits
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  Cancel journey with immediate full refund to original payment method plus future flight discount credit.
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
