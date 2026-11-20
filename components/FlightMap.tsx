@@ -45,20 +45,26 @@ export default function FlightMap({
     if (!LState || !mapContainerRef.current || mapInstanceRef.current) return;
 
     const L = LState;
-    // Center of India (lat: 21.0, lng: 78.5), zoom level 5
+    // Center on India (lat: 22.0, lng: 79.0), zoom 5
     const map = L.map(mapContainerRef.current, {
-      center: [21.5, 79.0],
+      center: [22.0, 79.5],
       zoom: 5,
       minZoom: 4,
-      maxZoom: 9,
+      maxZoom: 10,
       zoomControl: false,
       attributionControl: false,
     });
 
-    // Sleek CartoDB Dark Matter aviation control room tiles
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd',
-      maxZoom: 19,
+    // 100% Free, NO API KEY required: Esri World Dark Gray Canvas (Coastlines, Country Borders, Landmass)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      subdomains: ['server', 'services'],
+    }).addTo(map);
+
+    // Subtle state & coast labels overlay (also free from Esri, zero key needed)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      opacity: 0.6,
     }).addTo(map);
 
     // Zoom controls at bottom-right
@@ -90,29 +96,30 @@ export default function FlightMap({
     if (showWeather && simulationResult) {
       const disHub = AIRPORTS.find((a) => a.id === simulationResult.params.airport);
       if (disHub) {
-        // Convective storm radar circle
+        // Outer precipitation radar cell
         const stormCircle = L.circle([disHub.lat, disHub.lng], {
-          radius: 120000, // 120km radius storm cell
+          radius: 140000, // 140km radius storm cell
           color: '#ef4444',
           fillColor: '#ef4444',
-          fillOpacity: 0.22,
-          weight: 1.5,
-          dashArray: '4, 4',
+          fillOpacity: 0.25,
+          weight: 2,
+          dashArray: '5, 5',
         });
         stormCircle.bindTooltip(
-          `<div style="font-weight:700;color:#ef4444;">⛈️ ACTIVE ${simulationResult.params.type.toUpperCase()} RADAR CELL</div>
-           <div style="font-size:11px;color:#94a3b8;">${simulationResult.params.airport} Airspace Restricted (${simulationResult.params.startTime} - ${simulationResult.summary.closure_end})</div>`,
+          `<div style="font-weight:800;color:#ef4444;font-size:12px;">⛈️ CONVECTIVE STORM RADAR CELL</div>
+           <div style="font-size:11px;color:#cbd5e1;margin-top:2px;">Airport: <b>${simulationResult.params.airport}</b> (${disHub.city})</div>
+           <div style="font-size:11px;color:#f87171;">Ground Stop Active: <b>${simulationResult.params.startTime} - ${simulationResult.summary.closure_end}</b></div>`,
           { sticky: true, className: 'aviation-tooltip' }
         );
         layerGroup.addLayer(stormCircle);
 
-        // Core inner heavy precipitation cell
+        // Core heavy cell
         const coreStorm = L.circle([disHub.lat, disHub.lng], {
-          radius: 60000,
+          radius: 70000,
           color: '#f97316',
           fillColor: '#dc2626',
-          fillOpacity: 0.4,
-          weight: 1,
+          fillOpacity: 0.45,
+          weight: 1.5,
         });
         layerGroup.addLayer(coreStorm);
       }
@@ -133,7 +140,6 @@ export default function FlightMap({
     }
 
     routesMap.forEach(({ from, to, flights }) => {
-      // Find delay status among flights on this route
       let isDelayed = false;
       let isSevere = false;
       let hasInFlight = false;
@@ -150,13 +156,12 @@ export default function FlightMap({
         }
       }
 
-      // Filter modes
       if (filterMode === 'delayed' && !isDelayed) return;
       if (filterMode === 'inflight' && !hasInFlight) return;
 
       const color = isSevere ? '#ef4444' : isDelayed ? '#f97316' : '#00d4ff';
       const weight = isSevere ? 2.5 : isDelayed ? 2 : 1.2;
-      const opacity = isSevere ? 0.85 : isDelayed ? 0.7 : 0.35;
+      const opacity = isSevere ? 0.9 : isDelayed ? 0.75 : 0.4;
 
       // Calculate midpoint curvature for aviation airway arc
       const latMid = (from.lat + to.lat) / 2 + (to.lng - from.lng) * 0.08;
@@ -182,13 +187,13 @@ export default function FlightMap({
           return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;margin-top:2px;">
             <span style="font-weight:700;color:#00d4ff;">${fl.flight_id}</span>
             <span>${fl.dep}→${fl.arr} (${fl.tail_id})</span>
-            <span style="color:${delay > 0 ? '#f97316' : '#22c55e'};font-weight:600;">${delay > 0 ? `+${delay}m` : 'On Time'}</span>
+            <span style="color:${delay > 0 ? '#f97316' : '#22c55e'};font-weight:700;">${delay > 0 ? `+${delay}m` : 'On Time'}</span>
           </div>`;
         })
         .join('');
 
       polyline.bindTooltip(
-        `<div style="font-weight:700;color:#fff;border-bottom:1px solid #334155;padding-bottom:4px;">AIRWAY: ${from.id} ⇄ ${to.id} (${flights.length} flights)</div>${flightListHtml}`,
+        `<div style="font-weight:800;color:#fff;border-bottom:1px solid #334155;padding-bottom:4px;">AIRWAY: ${from.id} ⇄ ${to.id} (${flights.length} flights)</div>${flightListHtml}`,
         { sticky: true, className: 'aviation-tooltip' }
       );
 
@@ -213,23 +218,22 @@ export default function FlightMap({
 
         const planeColor = delay > 60 ? '#ef4444' : delay > 0 ? '#f97316' : '#22c55e';
 
-        // Calculate heading angle
         const dy = toAp.lat - fromAp.lat;
         const dx = (toAp.lng - fromAp.lng) * Math.cos((fromAp.lat * Math.PI) / 180);
         const angle = (Math.atan2(dx, dy) * 180) / Math.PI;
 
         const planeIcon = L.divIcon({
           className: 'plane-marker',
-          html: `<div style="transform: rotate(${angle}deg); width: 22px; height: 22px; display:flex; align-items:center; justify-content:center; color: ${planeColor}; filter: drop-shadow(0 0 6px ${planeColor}); font-size: 16px;">✈</div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
+          html: `<div style="transform: rotate(${angle}deg); width: 24px; height: 24px; display:flex; align-items:center; justify-content:center; color: ${planeColor}; filter: drop-shadow(0 0 8px ${planeColor}); font-size: 18px; font-weight:800;">✈</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
         });
 
         const planeMarker = L.marker([curLat, curLng], { icon: planeIcon });
         planeMarker.bindTooltip(
-          `<div style="font-weight:700;color:${planeColor};">✈ ${f.flight_id} (${f.tail_id}) IN FLIGHT</div>
-           <div style="font-size:11px;color:#94a3b8;">${f.origin} ➔ ${f.destination} · ${Math.round(progress * 100)}% route complete</div>
-           <div style="font-size:11px;color:${delay > 0 ? '#f97316' : '#22c55e'};">Status: ${delay > 0 ? `+${delay}m delay (${simF?.cause})` : 'Operating On Time'}</div>`,
+          `<div style="font-weight:800;color:${planeColor};">✈ FLIGHT ${f.flight_id} (${f.tail_id})</div>
+           <div style="font-size:11px;color:#94a3b8;">${f.origin} ➔ ${f.destination} · ${Math.round(progress * 100)}% route completed</div>
+           <div style="font-size:11px;color:${delay > 0 ? '#f97316' : '#22c55e'};margin-top:2px;font-weight:700;">Status: ${delay > 0 ? `+${delay}m delay` : 'Operating On Time'}</div>`,
           { sticky: true, className: 'aviation-tooltip' }
         );
         layerGroup.addLayer(planeMarker);
@@ -241,7 +245,6 @@ export default function FlightMap({
       const isDisrupted = simulationResult?.params.airport === airport.id;
       const isSelected = selectedAirport === airport.id;
 
-      // Check if airport has delayed flights departing or arriving
       const hasDelays = simulationResult?.flightStatuses.some(
         (f) => (f.origin === airport.id || f.destination === airport.id) && f.delay_minutes > 0
       );
@@ -255,13 +258,13 @@ export default function FlightMap({
           <div style="position: relative; width: ${size * 2}px; height: ${size * 2}px; display:flex; align-items:center; justify-content:center;">
             ${
               isDisrupted
-                ? `<div style="position:absolute; inset:-8px; border: 2px solid #ef4444; border-radius:50%; animation: pulse-ring 1.8s infinite;"></div>`
+                ? `<div style="position:absolute; inset:-10px; border: 2.5px solid #ef4444; border-radius:50%; animation: pulse-ring 1.8s infinite;"></div>`
                 : ''
             }
             <div style="width: ${size}px; height: ${size}px; border-radius: 50%; background: ${color}; border: 2px solid ${
           isSelected ? '#ffffff' : '#0a1628'
-        }; box-shadow: 0 0 10px ${color};"></div>
-            <div style="position:absolute; top:-16px; font-size: 10px; font-weight:800; color: #f8fafc; font-family: monospace; text-shadow: 0 0 4px #000; letter-spacing:0.05em;">${
+        }; box-shadow: 0 0 12px ${color};"></div>
+            <div style="position:absolute; top:-16px; font-size: 11px; font-weight:900; color: #ffffff; font-family: monospace; text-shadow: 0 0 5px #000, 0 0 8px #000; letter-spacing:0.05em;">${
               airport.id
             }</div>
           </div>
@@ -278,9 +281,9 @@ export default function FlightMap({
       marker.bindTooltip(
         `<div style="font-weight:800;color:${color};font-size:13px;">${airport.id} — ${airport.city}</div>
          <div style="font-size:11px;color:#94a3b8;">${airport.name}</div>
-         <div style="font-size:11px;color:#e2e8f0;margin-top:4px;">Tier: <b>${airport.tier.replace('_', ' ')}</b> · Capacity: <b>${airport.capacity_per_hour} fl/hr</b></div>
+         <div style="font-size:11px;color:#e2e8f0;margin-top:4px;">Tier: <b>${airport.tier.replace('_', ' ').toUpperCase()}</b> · Capacity: <b>${airport.capacity_per_hour} fl/hr</b></div>
          <div style="font-size:11px;color:#cbd5e1;">Departures: <b>${departing}</b> · Arrivals: <b>${arriving}</b></div>
-         ${isDisrupted ? `<div style="font-weight:700;color:#ef4444;margin-top:4px;">⚠️ GROUND STOP: ${simulationResult.params.type.toUpperCase()}</div>` : ''}`,
+         ${isDisrupted ? `<div style="font-weight:800;color:#ef4444;margin-top:4px;">⚠️ GROUND STOP: ${simulationResult.params.type.toUpperCase()}</div>` : ''}`,
         { sticky: true, className: 'aviation-tooltip' }
       );
 
@@ -309,7 +312,7 @@ export default function FlightMap({
         .leaflet-tooltip-right:before { border-right-color: #1e3a5f !important; }
         @keyframes pulse-ring {
           0% { transform: scale(0.8); opacity: 1; }
-          100% { transform: scale(2.2); opacity: 0; }
+          100% { transform: scale(2.3); opacity: 0; }
         }
       `}</style>
     </div>
