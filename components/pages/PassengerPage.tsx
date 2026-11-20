@@ -77,7 +77,7 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
 
     setRebookingLog((prev) => [logEntry, ...prev]);
     setNotification(`✓ ${conn.passengers} Passengers on ${conn.connection_id} Protected: ${assignedOption}`);
-    setTimeout(() => setNotification(null), 5000);
+    setTimeout(() => setNotification(null), 6000);
     setSelectedConnection(null);
   };
 
@@ -90,16 +90,17 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
             background: 'rgba(34, 197, 94, 0.15)',
             border: '1px solid rgba(34, 197, 94, 0.4)',
             borderRadius: '10px',
-            padding: '12px 18px',
+            padding: '14px 18px',
             color: 'var(--status-green)',
-            fontWeight: '600',
+            fontWeight: '700',
             fontSize: '13px',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
+            boxShadow: '0 0 20px rgba(34, 197, 94, 0.2)',
           }}
         >
-          <span>✓</span>
+          <span style={{ fontSize: '18px' }}>✓</span>
           <span>{notification}</span>
         </div>
       )}
@@ -130,12 +131,12 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
           </div>
         </div>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '18px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Intact Connections</div>
-          <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--status-green)', marginTop: '4px' }}>
-            {safeConnections.length} / {CONNECTIONS.length}
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>At-Risk Transfers</div>
+          <div style={{ fontSize: '28px', fontWeight: '800', color: atRiskPax > 0 ? 'var(--status-yellow)' : 'var(--status-green)', marginTop: '4px' }}>
+            {atRiskPax}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {Math.round((safeConnections.length / CONNECTIONS.length) * 100)}% connection integrity preserved
+            {atRiskConnections.length} tight buffer transfers (&lt;30m buffer)
           </div>
         </div>
       </div>
@@ -147,26 +148,30 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
             RECENT PASSENGER RECOVERY &amp; REBOOKING ACTIONS LOG
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {rebookingLog.slice(0, 3).map((log, i) => (
+            {rebookingLog.map((log, i) => (
               <div
                 key={i}
                 style={{
                   background: 'var(--bg-secondary)',
                   borderRadius: '6px',
-                  padding: '8px 12px',
+                  padding: '10px 14px',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   fontSize: '12px',
-                  borderLeft: '3px solid var(--status-green)',
+                  borderLeft: '4px solid var(--status-green)',
                 }}
               >
                 <div>
-                  <span style={{ fontWeight: '700', color: 'var(--accent-cyan)' }}>{log.connectionId}</span>
-                  <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>({log.paxCount} Passengers)</span>
-                  <div style={{ color: 'var(--text-primary)', marginTop: '2px' }}>{log.assignedOption}</div>
+                  <span style={{ fontWeight: '800', color: 'var(--accent-cyan)' }}>{log.connectionId}</span>
+                  <span style={{ color: 'var(--text-secondary)', marginLeft: '8px', fontWeight: '600' }}>
+                    ({log.paxCount} Passengers)
+                  </span>
+                  <div style={{ color: 'var(--text-primary)', marginTop: '3px' }}>{log.assignedOption}</div>
                 </div>
-                <span style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-muted)' }}>{log.timestamp} IST</span>
+                <span style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--status-green)', fontWeight: '700' }}>
+                  ✓ {log.timestamp} IST
+                </span>
               </div>
             ))}
           </div>
@@ -181,7 +186,7 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
               Passenger Connection Ledger (All 21 Transfers)
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              Click <b>"Resolve &amp; Rebook"</b> on any stranded connection to trigger automated airline passenger care workflows.
+              👉 Click <b style={{ color: 'var(--accent-cyan)' }}>"⚡ Rebook / Protect"</b> on <b>ANY</b> transfer below to open the Passenger Care &amp; Rebooking Protocol.
             </div>
           </div>
         </div>
@@ -198,17 +203,22 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
               <th>Outbound Dep</th>
               <th>Buffer / Gap</th>
               <th>Status</th>
-              <th>Recovery Action</th>
+              <th>Action Protocol</th>
             </tr>
           </thead>
           <tbody>
             {connectionDetails.map((conn) => {
               const ap = AIRPORTS.find((a) => a.id === conn.airport);
               const isMissed = conn.status === 'missed';
+              const isAtRisk = conn.status === 'at_risk';
               const isResolved = rebookingLog.some((r) => r.connectionId === conn.connection_id);
 
               return (
-                <tr key={conn.connection_id}>
+                <tr
+                  key={conn.connection_id}
+                  style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                  onClick={() => setSelectedConnection(conn)}
+                >
                   <td>
                     <span style={{ fontWeight: '700', color: 'var(--accent-cyan)' }}>{conn.connection_id}</span>
                   </td>
@@ -224,7 +234,7 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
                   </td>
                   <td>
                     <span style={{ fontWeight: '700', color: isMissed ? 'var(--status-red)' : 'var(--text-primary)' }}>
-                      {conn.passengers}
+                      {conn.passengers} pax
                     </span>
                   </td>
                   <td>
@@ -238,7 +248,7 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
                       style={{
                         fontFamily: 'monospace',
                         fontWeight: '600',
-                        color: conn.gap_minutes < conn.required_minutes ? 'var(--status-red)' : 'var(--status-green)',
+                        color: conn.gap_minutes < conn.required_minutes ? 'var(--status-red)' : isAtRisk ? 'var(--status-yellow)' : 'var(--status-green)',
                       }}
                     >
                       {conn.gap_minutes}m (min {conn.required_minutes}m)
@@ -249,36 +259,75 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
                       <span className="badge badge-green">✓ PROTECTED</span>
                     ) : isMissed ? (
                       <span className="badge badge-red">MISSED</span>
-                    ) : conn.status === 'at_risk' ? (
+                    ) : isAtRisk ? (
                       <span className="badge badge-yellow">AT RISK</span>
                     ) : (
                       <span className="badge badge-green">SAFE</span>
                     )}
                   </td>
                   <td>
-                    {isMissed && !isResolved ? (
+                    {isResolved ? (
+                      <span style={{ fontSize: '11px', color: 'var(--status-green)', fontWeight: '700' }}>
+                        ✓ Care Assigned
+                      </span>
+                    ) : isMissed ? (
                       <button
-                        onClick={() => setSelectedConnection(conn)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedConnection(conn);
+                        }}
                         style={{
                           background: 'linear-gradient(135deg, #f97316, #ef4444)',
                           border: 'none',
                           borderRadius: '6px',
-                          padding: '5px 10px',
+                          padding: '6px 12px',
                           color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          boxShadow: '0 0 12px rgba(239, 68, 68, 0.4)',
+                        }}
+                      >
+                        ⚡ Rebook Stranded
+                      </button>
+                    ) : isAtRisk ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedConnection(conn);
+                        }}
+                        style={{
+                          background: 'rgba(234, 179, 8, 0.2)',
+                          border: '1px solid rgba(234, 179, 8, 0.5)',
+                          borderRadius: '6px',
+                          padding: '5px 10px',
+                          color: 'var(--status-yellow)',
                           fontSize: '11px',
                           fontWeight: '700',
                           cursor: 'pointer',
-                          boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
                         }}
                       >
-                        ⚡ Rebook Passengers
+                        ⚡ Protect Transfer
                       </button>
-                    ) : isResolved ? (
-                      <span style={{ fontSize: '11px', color: 'var(--status-green)', fontWeight: '600' }}>
-                        Rebooking Executed
-                      </span>
                     ) : (
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Connection Intact</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedConnection(conn);
+                        }}
+                        style={{
+                          background: 'rgba(0, 212, 255, 0.1)',
+                          border: '1px solid rgba(0, 212, 255, 0.3)',
+                          borderRadius: '6px',
+                          padding: '4px 8px',
+                          color: 'var(--accent-cyan)',
+                          fontSize: '10px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Manage Care
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -294,8 +343,8 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(5px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -311,20 +360,20 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
               padding: '24px',
               width: '560px',
               maxWidth: '92vw',
-              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.8)',
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.85)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--status-red)' }}>
-                    Stranded Passenger Recovery Protocol
+                  <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--accent-cyan)' }}>
+                    Passenger Recovery &amp; Rebooking Protocol
                   </span>
-                  <span className="badge badge-red">{selectedConnection.connection_id}</span>
+                  <span className="badge badge-cyan">{selectedConnection.connection_id}</span>
                 </div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  {selectedConnection.passengers} passengers missed transfer at {selectedConnection.airport} ({selectedConnection.from_flight} ➔ {selectedConnection.to_flight})
+                  <b>{selectedConnection.passengers} passengers</b> connecting at <b>{selectedConnection.airport}</b> ({selectedConnection.from_flight} ➔ {selectedConnection.to_flight})
                 </div>
               </div>
               <button
@@ -336,11 +385,14 @@ export default function PassengerPage({ simulationResult }: PassengerPageProps) 
             </div>
 
             {/* Diagnostic Box */}
-            <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '12px', marginBottom: '18px' }}>
-              <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--status-red)', textTransform: 'uppercase' }}>
-                Breach Diagnosis
+            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', marginBottom: '18px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                Transfer Buffer Diagnosis
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-primary)', marginTop: '2px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-primary)', marginTop: '3px' }}>
+                Available buffer: <b>{selectedConnection.gap_minutes} minutes</b> (Minimum requirement: {selectedConnection.required_minutes} minutes)
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                 {selectedConnection.reason}
               </div>
             </div>

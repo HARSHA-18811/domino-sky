@@ -14,36 +14,36 @@ interface SimulatorPageProps {
 
 const PRESET_SCENARIOS = [
   {
-    name: 'Mumbai 90-Min Thunderstorm (Hackathon Scenario)',
+    name: 'Mumbai Morning Hub Storm (07:30 IST - 90 min) [High Stranded Pax]',
     airport: 'BOM',
     type: 'Thunderstorm',
-    startTime: '14:00',
+    startTime: '07:30',
     durationMinutes: 90,
-    desc: 'Severe convective storm over CSMIA runway causing arrival holds and rotational delay cascade across BLR, CCU, and DEL.',
+    desc: 'Peak morning transit bank closure at CSMIA. Directly breaks connections CX01, CX03, and CX05, stranding over 150 transfer passengers!',
   },
   {
-    name: 'Delhi 120-Min Winter Fog & Runway Closure',
+    name: 'Mumbai Afternoon Thunderstorm (13:30 IST - 120 min) [High Cascade]',
+    airport: 'BOM',
+    type: 'Thunderstorm',
+    startTime: '13:30',
+    durationMinutes: 120,
+    desc: 'Severe 2-hour monsoon squall holding arrivals and triggering multi-aircraft rotational delays across AMD, DEL, and CCU.',
+  },
+  {
+    name: 'Delhi Winter Fog & Runway Closure (08:00 IST - 120 min)',
     airport: 'DEL',
     type: 'Runway Closure',
     startTime: '08:00',
     durationMinutes: 120,
-    desc: 'Dense morning fog & runway maintenance holding mega-hub departures and stranding north-bound feeder connections.',
+    desc: 'Dense morning fog holding northern mega-hub departures and breaking passenger connections CX10, CX13, and CX14.',
   },
   {
-    name: 'Bengaluru 60-Min Radar Technical Outage',
+    name: 'Bengaluru Radar Technical Outage (11:00 IST - 90 min)',
     airport: 'BLR',
     type: 'Technical Disruption',
     startTime: '11:00',
-    durationMinutes: 60,
-    desc: 'Air Traffic Control radar glitch halting southern corridor departures to COK, MAA, and HYD.',
-  },
-  {
-    name: 'Hyderabad 75-Min Heavy Rainfall & Windshear',
-    airport: 'HYD',
-    type: 'Heavy Rainfall',
-    startTime: '12:00',
-    durationMinutes: 75,
-    desc: 'Monsoon squall restricting operations across central hub rotations VT-DS07 and VT-DS08.',
+    durationMinutes: 90,
+    desc: 'Air Traffic Control radar glitch halting southern corridor departures and breaking transfers to COK, MAA, and HYD.',
   },
 ];
 
@@ -55,7 +55,7 @@ export default function SimulatorPage({
 }: SimulatorPageProps) {
   const [selectedAirport, setSelectedAirport] = useState('BOM');
   const [disruptionType, setDisruptionType] = useState('Thunderstorm');
-  const [startTime, setStartTime] = useState('14:00');
+  const [startTime, setStartTime] = useState('07:30');
   const [duration, setDuration] = useState(90);
   const [activePreset, setActivePreset] = useState<string | null>(PRESET_SCENARIOS[0].name);
 
@@ -80,7 +80,7 @@ export default function SimulatorPage({
       onSimulationComplete(result);
       setIsSimulating(false);
       onNavigate('dashboard');
-    }, 600);
+    }, 500);
   };
 
   const airportObj = AIRPORTS.find((a) => a.id === selectedAirport);
@@ -100,7 +100,7 @@ export default function SimulatorPage({
       {/* Preset cards */}
       <div>
         <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', letterSpacing: '0.08em', marginBottom: '12px' }}>
-          OFFICIAL HACKATHON BENCHMARK PRESETS
+          OFFICIAL HACKATHON BENCHMARK PRESETS (CLICK ANY TO LOAD)
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
           {PRESET_SCENARIOS.map((p) => {
